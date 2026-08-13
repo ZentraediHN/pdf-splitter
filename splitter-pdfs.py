@@ -16,13 +16,14 @@ class PDFSplitterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Divisor y Compresor de PDFs")
-        self.root.geometry("680x580")
-        self.root.minsize(600, 500)
+        self.root.geometry("680x640")
+        self.root.minsize(600, 520)
 
         # Variables de estado
         self.pdf_path = tk.StringVar()
         self.output_dir = tk.StringVar()
         self.max_size_mb = tk.DoubleVar(value=14.0)
+        self.export_mode = tk.StringVar(value="both")  # Opciones: "pdf", "zip", "both"
         self.is_processing = False
 
         self._create_widgets()
@@ -42,8 +43,8 @@ class PDFSplitterApp:
         ttk.Entry(out_frame, textvariable=self.output_dir).pack(side="left", fill="x", expand=True, padx=(0, 5))
         ttk.Button(out_frame, text="Buscar Carpeta...", command=self._browse_output_dir).pack(side="right")
 
-        # Frame de configuración
-        config_frame = ttk.LabelFrame(self.root, text=" Configuración ", padding=10)
+        # Frame de configuración de tamaño
+        config_frame = ttk.LabelFrame(self.root, text=" Configuración de Tamaño ", padding=10)
         config_frame.pack(fill="x", padx=15, pady=5)
 
         ttk.Label(config_frame, text="Tamaño máximo por parte (MB):").pack(side="left", padx=(0, 10))
@@ -56,6 +57,31 @@ class PDFSplitterApp:
             width=10
         ).pack(side="left")
 
+        # Frame de opciones de guardado
+        save_frame = ttk.LabelFrame(self.root, text=" Opción de Guardado ", padding=10)
+        save_frame.pack(fill="x", padx=15, pady=5)
+
+        ttk.Radiobutton(
+            save_frame, 
+            text="Solo partes PDF", 
+            variable=self.export_mode, 
+            value="pdf"
+        ).pack(side="left", padx=(0, 15))
+
+        ttk.Radiobutton(
+            save_frame, 
+            text="Solo archivo comprimido (.zip)", 
+            variable=self.export_mode, 
+            value="zip"
+        ).pack(side="left", padx=(0, 15))
+
+        ttk.Radiobutton(
+            save_frame, 
+            text="Ambos (.pdf y .zip)", 
+            variable=self.export_mode, 
+            value="both"
+        ).pack(side="left")
+
         # Botón de inicio
         self.btn_process = ttk.Button(self.root, text="Procesar y Dividir PDF", command=self._start_process_thread)
         self.btn_process.pack(fill="x", padx=15, pady=10)
@@ -64,7 +90,7 @@ class PDFSplitterApp:
         log_frame = ttk.LabelFrame(self.root, text=" Registro de Operaciones ", padding=10)
         log_frame.pack(fill="both", expand=True, padx=15, pady=(5, 15))
 
-        self.log_widget = scrolledtext.ScrolledText(log_frame, wrap="word", state="disabled", height=12)
+        self.log_widget = scrolledtext.ScrolledText(log_frame, wrap="word", state="disabled", height=10)
         self.log_widget.pack(fill="both", expand=True)
 
     def _browse_pdf(self):
@@ -247,6 +273,7 @@ class PDFSplitterApp:
 
     def _run_pdf_process(self, pdf_path, output_dir, max_size_mb):
         try:
+            export_mode = self.export_mode.get()
             self.log("🚀 Iniciando procesamiento del PDF...")
             original_size = self.get_pdf_size(pdf_path)
             self.log(f"📄 Archivo: {os.path.basename(pdf_path)} ({original_size:.2f} MB)")
@@ -266,17 +293,40 @@ class PDFSplitterApp:
                 final_filename = f"{base_name}_comprimido.pdf"
                 final_path = os.path.join(output_dir, final_filename)
                 shutil.copy2(compressed_path, final_path)
-                self.log(f"🎉 Guardado en: {final_path}")
+
+                if export_mode == "zip":
+                    zip_filename = os.path.join(output_dir, f"{base_name}_comprimido.zip")
+                    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+                        zipf.write(final_path, os.path.basename(final_path))
+                    os.remove(final_path)
+                    self.log(f"📦 Guardado únicamente en ZIP: {zip_filename}")
+                elif export_mode == "both":
+                    zip_filename = os.path.join(output_dir, f"{base_name}_comprimido.zip")
+                    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+                        zipf.write(final_path, os.path.basename(final_path))
+                    self.log(f"🎉 Guardados en PDF y ZIP: {final_path}")
+                else:
+                    self.log(f"🎉 Guardado únicamente en PDF: {final_path}")
             else:
                 self.log(f"\n⚠️ {final_size:.2f} MB > {max_size_mb} MB → Dividiendo en partes...")
                 parts, actual_parts = self.split_pdf_by_max_size(compressed_path, output_dir, parts_needed_estimate, max_size_mb)
 
-                zip_filename = os.path.join(output_dir, f"{base_name}_partes.zip")
-                with zipfile.ZipFile(zip_filename, 'w') as zipf:
-                    for part in parts:
-                        zipf.write(part, os.path.basename(part))
+                # Opción ZIP o Ambos
+                if export_mode in ("zip", "both"):
+                    zip_filename = os.path.join(output_dir, f"{base_name}_partes.zip")
+                    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+                        for part in parts:
+                            zipf.write(part, os.path.basename(part))
+                    self.log(f"\n📦 Archivo ZIP empaquetado: {zip_filename}")
 
-                self.log(f"\n📦 Archivo ZIP empaquetado: {zip_filename}")
+                # Limpieza de partes PDF si el usuario eligió 'Solo ZIP'
+                if export_mode == "zip":
+                    for part in parts:
+                        if os.path.exists(part):
+                            os.remove(part)
+                    self.log("🗑️ Archivos PDF individuales eliminados (solo se conserva el ZIP).")
+                elif export_mode == "pdf":
+                    self.log("\n📄 Se conservan únicamente las partes PDF individuales.")
 
             shutil.rmtree(temp_dir, ignore_errors=True)
             self.log("\n✅ ¡Proceso completado exitosamente!")
@@ -291,7 +341,7 @@ class PDFSplitterApp:
 
 
 if __name__ == "__main__":
-    # Solución DPI para corregir texto borroso en monitores High-DPI en Windows
+    # Solución DPI para corregir texto borroso en Windows
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception:
