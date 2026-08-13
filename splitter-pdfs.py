@@ -4,6 +4,7 @@ import math
 import shutil
 import zipfile
 import threading
+import ctypes
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
@@ -117,7 +118,6 @@ class PDFSplitterApp:
         self.is_processing = True
         self.btn_process.config(state="disabled")
 
-        # Ejecutar en hilo secundario para no congelar la GUI
         thread = threading.Thread(
             target=self._run_pdf_process, 
             args=(pdf_path, output_dir, max_mb),
@@ -166,7 +166,6 @@ class PDFSplitterApp:
 
         for test_end_page in range(start_page + 1, total_pages + 1):
             writer = PdfWriter()
-            # Uso de append para conservar marcadores e hipervínculos
             writer.append(reader, pages=(start_page, test_end_page))
 
             temp_path = os.path.join(temp_dir, "test_part.pdf")
@@ -227,7 +226,6 @@ class PDFSplitterApp:
             )
 
             writer = PdfWriter()
-            # append() conserva y reajusta automáticamente los bookmarks/outlines
             writer.append(reader, pages=(current_page, end_page))
 
             output_filename = f"{base_name}_parte{actual_parts}.pdf"
@@ -257,7 +255,6 @@ class PDFSplitterApp:
             os.makedirs(temp_dir, exist_ok=True)
             base_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
-            # Compresión
             self.log("\n🔄 Aplicando compresión lossless...")
             compressed_path = os.path.join(temp_dir, f"{base_name}_comprimido.pdf")
             final_size = self.compress_pdf_lossless(pdf_path, compressed_path)
@@ -274,7 +271,6 @@ class PDFSplitterApp:
                 self.log(f"\n⚠️ {final_size:.2f} MB > {max_size_mb} MB → Dividiendo en partes...")
                 parts, actual_parts = self.split_pdf_by_max_size(compressed_path, output_dir, parts_needed_estimate, max_size_mb)
 
-                # Generar archivo ZIP opcional en la carpeta de salida
                 zip_filename = os.path.join(output_dir, f"{base_name}_partes.zip")
                 with zipfile.ZipFile(zip_filename, 'w') as zipf:
                     for part in parts:
@@ -295,6 +291,15 @@ class PDFSplitterApp:
 
 
 if __name__ == "__main__":
+    # Solución DPI para corregir texto borroso en monitores High-DPI en Windows
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
     root = tk.Tk()
     app = PDFSplitterApp(root)
     root.mainloop()
