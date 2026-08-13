@@ -166,8 +166,8 @@ class PDFSplitterApp:
 
         for test_end_page in range(start_page + 1, total_pages + 1):
             writer = PdfWriter()
-            for page_num in range(start_page, test_end_page):
-                writer.add_page(reader.pages[page_num])
+            # Uso de append para conservar marcadores e hipervínculos
+            writer.append(reader, pages=(start_page, test_end_page))
 
             temp_path = os.path.join(temp_dir, "test_part.pdf")
             with open(temp_path, 'wb') as f:
@@ -187,7 +187,7 @@ class PDFSplitterApp:
                 else:
                     best_end_page = start_page + 1
                     writer_forced = PdfWriter()
-                    writer_forced.add_page(reader.pages[start_page])
+                    writer_forced.append(reader, pages=(start_page, start_page + 1))
                     temp_forced_path = os.path.join(temp_dir, "forced_test.pdf")
                     with open(temp_forced_path, 'wb') as f:
                         writer_forced.write(f)
@@ -227,10 +227,8 @@ class PDFSplitterApp:
             )
 
             writer = PdfWriter()
-            for page_num in range(current_page, end_page):
-                writer.add_page(reader.pages[page_num])
-            if reader.metadata:
-                writer.add_metadata(reader.metadata)
+            # append() conserva y reajusta automáticamente los bookmarks/outlines
+            writer.append(reader, pages=(current_page, end_page))
 
             output_filename = f"{base_name}_parte{actual_parts}.pdf"
             output_path = os.path.join(output_dir, output_filename)
